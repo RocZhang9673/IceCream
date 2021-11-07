@@ -65,7 +65,7 @@ extension DatabaseManager {
             }
           }
           
-          self.container.add(operation)
+          self.database.add(operation)
         })
       }
     }
