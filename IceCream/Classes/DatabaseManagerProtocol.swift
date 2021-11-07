@@ -65,7 +65,11 @@ extension DatabaseManager {
             }
           }
           
-          self.database.add(operation)
+          if let dataBaseOperation = operation as? CKDatabaseOperation {
+            self.database.add(dataBaseOperation)
+          } else {
+            self.container.add(operation)
+          }
         })
       }
     }
