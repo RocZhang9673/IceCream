@@ -9,7 +9,9 @@ let package = Package(
     products: [
         .library(
             name: "IceCream",
-            targets: ["IceCream"]),
+            type: .dynamic,
+            targets: ["IceCream"]
+        ),
     ],
     dependencies: [
         .package(
@@ -20,9 +22,18 @@ let package = Package(
     targets: [
         .target(
             name: "IceCream",
-            dependencies: ["RealmSwift", "Realm"],
+            dependencies: [
+//              "RealmSwift", "Realm"
+//              .byName(name: "RealmSwift")
+              "RealmSwift"
+            ],
             path: "IceCream",
-            sources: ["Classes"])
+            sources: ["Classes"]
+//            linkerSettings: [
+//              .linkedLibrary("RealmSwift"),
+//              .linkedLibrary("Realm")
+//            ]
+        )
     ],
     swiftLanguageVersions: [.v5]
 )
