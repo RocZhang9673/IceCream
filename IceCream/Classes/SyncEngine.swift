@@ -6,6 +6,7 @@
 //
 
 import CloudKit
+import RealmSwift
 
 /// SyncEngine talks to CloudKit directly.
 /// Logically,
@@ -25,8 +26,11 @@ public final class SyncEngine {
         case .public:
             let publicDatabaseManager = PublicDatabaseManager(objects: objects, container: container)
             self.init(databaseManager: publicDatabaseManager)
-        default:
-            fatalError("Shared database scope is not supported yet")
+        case .shared:
+            let sharedDatabaseManager = SharedDatabaseManager(objects: objects, container: container)
+            self.init(databaseManager: sharedDatabaseManager)
+        @unknown default:
+            fatalError("Unknown database scope")
         }
     }
     
@@ -67,20 +71,54 @@ public final class SyncEngine {
 
 // MARK: Public Method
 extension SyncEngine {
-    
+
     /// Fetch data on the CloudKit and merge with local
     ///
     /// - Parameter completionHandler: Supported in the `privateCloudDatabase` when the fetch data process completes, completionHandler will be called. The error will be returned when anything wrong happens. Otherwise the error will be `nil`.
     public func pull(completionHandler: ((Error?) -> Void)? = nil) {
         databaseManager.fetchChangesInDatabase(completionHandler)
     }
-    
+
     /// Push all existing local data to CloudKit
     /// You should NOT to call this method too frequently
     public func pushAll() {
         databaseManager.syncObjects.forEach { $0.pushLocalObjectsToCloudKit() }
     }
-    
+
+    // MARK: - Participant: accept a share invitation
+
+    /// Accept a CloudKit share invitation and immediately fetch the shared records into Realm.
+    public func acceptShare(metadata: CKShare.Metadata,
+                            completionHandler: @escaping (Error?) -> Void) {
+        databaseManager.container.accept(metadata) { [weak self] _, error in
+            if let error = error { completionHandler(error); return }
+            DispatchQueue.global(qos: .utility).async {
+                self?.databaseManager.fetchChangesInDatabase { completionHandler($0) }
+            }
+        }
+    }
+
+    // MARK: - Owner: create a zone-level share for a record type (iOS 15+)
+
+    /// Share an entire record zone (all records of the given type) with other iCloud users.
+    /// Only the owner calls this; the resulting `CKShare.url` can be sent to participants.
+    @available(iOS 15.0, macOS 12.0, tvOS 15.0, watchOS 8.0, *)
+    public func createShare<T: Object & CKRecordConvertible>(
+        type: T.Type,
+        publicPermission: CKShare.Participant.Permission = .readOnly,
+        completionHandler: @escaping (CKShare?, URL?, Error?) -> Void
+    ) {
+        let share = CKShare(recordZoneID: T.zoneID)
+        share.publicPermission = publicPermission
+        let op = CKModifyRecordsOperation(recordsToSave: [share], recordIDsToDelete: nil)
+        op.savePolicy = .ifServerRecordUnchanged
+        op.modifyRecordsCompletionBlock = { _, _, error in
+            completionHandler(error == nil ? share : nil, share.url, error)
+        }
+        // Always saves to the owner's private database
+        databaseManager.container.privateCloudDatabase.add(op)
+    }
+
 }
 
 public enum Notifications: String, NotificationName {
@@ -91,11 +129,13 @@ public enum IceCreamKey: String {
     /// Tokens
     case databaseChangesTokenKey
     case zoneChangesTokenKey
-    
+    case sharedDatabaseChangesTokenKey
+
     /// Flags
     case subscriptionIsLocallyCachedKey
     case hasCustomZoneCreatedKey
-    
+    case sharedSubscriptionIsLocallyCachedKey
+
     var value: String {
         return "icecream.keys." + rawValue
     }
@@ -109,11 +149,12 @@ public enum IceCreamKey: String {
 public enum IceCreamSubscription: String, CaseIterable {
     case cloudKitPrivateDatabaseSubscriptionID = "private_changes"
     case cloudKitPublicDatabaseSubscriptionID = "cloudKitPublicDatabaseSubcriptionID"
-    
+    case cloudKitSharedDatabaseSubscriptionID = "shared_changes"
+
     var id: String {
         return rawValue
     }
-    
+
     public static var allIDs: [String] {
         return IceCreamSubscription.allCases.map { $0.rawValue }
     }

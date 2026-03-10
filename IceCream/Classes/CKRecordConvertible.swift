@@ -36,8 +36,12 @@ extension CKRecordConvertible where Self: Object {
       return CKRecordZone.ID(zoneName: "\(recordType)sZone", ownerName: CKCurrentUserDefaultName)
     case .public:
       return CKRecordZone.default().zoneID
-    default:
-      fatalError("Shared Database is not supported now")
+    case .shared:
+      // SharedDatabaseManager.prepare() rewrites this placeholder to the real zone ID
+      // (with the owner's recordName) at write time after zone discovery.
+      return CKRecordZone.ID(zoneName: "\(recordType)sZone", ownerName: CKCurrentUserDefaultName)
+    @unknown default:
+      fatalError("Unknown database scope")
     }
   }
   

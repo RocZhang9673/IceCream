@@ -33,6 +33,11 @@ let package = Package(
 //              .linkedLibrary("RealmSwift"),
 //              .linkedLibrary("Realm")
 //            ]
+        ),
+        .testTarget(
+            name: "IceCreamTests",
+            dependencies: ["IceCream", "RealmSwift"],
+            path: "Tests/IceCreamTests"
         )
     ],
     swiftLanguageVersions: [.v5]
